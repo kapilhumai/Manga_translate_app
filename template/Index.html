@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manga Translate</title>
+</head>
+<body>
+    <h2>Manga Translator</h2>
+    <form method="POST" enctype="multipart/form-data">
+        <label>Upload Manga ZIP:</label><br>
+        <input type="file" name="zip_file" required><br><br>
+
+        <label>Select Language:</label><br>
+        <select name="lang_code">
+            <option value="ja">Japanese</option>
+            <option value="zh">Chinese</option>
+            <option value="ko">Korean</option>
+        </select><br><br>
+
+        <button type="submit">Translate</button>
+    </form>
+</body>
+</html>
