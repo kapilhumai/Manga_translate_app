@@ -3,6 +3,7 @@ import zipfile
 from flask import Flask, request, send_file, jsonify
 from PIL import Image, ImageDraw, ImageFont
 import pytesseract
+pytesseract.pytesseract.tesseract_cmd = '/data/data/com.termux/files/usr/bin/tesseract'
 from deep_translator import GoogleTranslator
 
 app = Flask(name)
