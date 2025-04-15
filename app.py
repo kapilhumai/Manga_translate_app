@@ -58,17 +58,30 @@ def upload_and_translate():
             print(f"[INFO] Processing {filename}")
             try:
                 img = Image.open(image_path).convert("RGB")
+            except Exception as img_error:
+                print(f"[ERROR] Could not open image {filename}: {img_error}")
+                continue
+
+            try:
                 text = pytesseract.image_to_string(img, lang='eng+jpn')
-                print(f"[OCR] Text from {filename}:\n{text.strip()[:100]}")
-
-                if not text.strip():
-                    print(f"[WARN] No text found in {filename}")
+                if text.strip():
+                    print(f"[OCR] Text from {filename}:\n{text.strip()[:150]}")
+                else:
+                    print(f"[OCR] EMPTY OCR result from {filename}")
                     continue
+            except Exception as ocr_error:
+                print(f"[ERROR] OCR failed on {filename}: {ocr_error}")
+                continue
 
+            try:
                 translated_text = GoogleTranslator(source='auto', target='en').translate(text)
-                print(f"[TRANSLATED] {filename}:\n{translated_text.strip()[:100]}")
+                print(f"[TRANSLATED] {filename}:\n{translated_text.strip()[:150]}")
+            except Exception as translate_error:
+                print(f"[ERROR] Translation failed for {filename}: {translate_error}")
+                continue
 
-                # Add translated text to image
+            # Add translated text to image
+            try:
                 draw = ImageDraw.Draw(img)
                 try:
                     font = ImageFont.truetype("/data/data/com.termux/files/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
@@ -77,25 +90,32 @@ def upload_and_translate():
 
                 draw.rectangle([0, 0, img.width, 100], fill="white")
                 draw.text((10, 10), translated_text, fill="black", font=font)
+            except Exception as draw_error:
+                print(f"[ERROR] Drawing text failed for {filename}: {draw_error}")
+                continue
 
+            try:
                 img.save(os.path.join(TRANSLATED_FOLDER, filename))
-                print(f"[SAVE] Translated image saved as {filename}")
+                print(f"[SAVE] Saved translated image: {filename}")
                 image_count += 1
-
-            except Exception as e:
-                print(f"[ERROR] Failed processing {filename}: {e}")
+            except Exception as save_err:
+                print(f"[ERROR] Saving image failed: {save_err}")
+                continue
 
     if image_count == 0:
-        return "No images found in uploaded ZIP."
+        return "No images found or successfully processed."
 
     # Create output ZIP
     output_zip = os.path.join(OUTPUT_FOLDER, 'translated.zip')
-    with zipfile.ZipFile(output_zip, 'w') as zipf:
-        for filename in os.listdir(TRANSLATED_FOLDER):
-            zipf.write(os.path.join(TRANSLATED_FOLDER, filename), filename)
-    print(f"[DONE] Translated ZIP created: {output_zip}")
-
-    return send_file(output_zip, as_attachment=True)
+    try:
+        with zipfile.ZipFile(output_zip, 'w') as zipf:
+            for filename in os.listdir(TRANSLATED_FOLDER):
+                zipf.write(os.path.join(TRANSLATED_FOLDER, filename), filename)
+        print(f"[DONE] Translated ZIP created: {output_zip}")
+        return send_file(output_zip, as_attachment=True)
+    except Exception as zip_err:
+        print(f"[ERROR] Failed to create output ZIP: {zip_err}")
+        return "Failed to create output ZIP."
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
