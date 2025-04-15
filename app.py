@@ -1,10 +1,11 @@
 import os
 import zipfile
-from flask import Flask, request, send_file, jsonify
-from PIL import Image, ImageDraw, ImageFont
+from flask import Flask, request, send_file
+from PIL import Image, ImageDraw
 import pytesseract
-pytesseract.pytesseract.tesseract_cmd = '/data/data/com.termux/files/usr/bin/tesseract'
 from deep_translator import GoogleTranslator
+
+pytesseract.pytesseract.tesseract_cmd = '/data/data/com.termux/files/usr/bin/tesseract'
 
 app = Flask(name)
 UPLOAD_FOLDER = 'uploads'
@@ -29,24 +30,33 @@ def upload_and_translate():
     zip_file.save(zip_path)
 
     extract_folder = os.path.join(UPLOAD_FOLDER, 'extracted')
-    os.makedirs(extract_folder, exist_ok=True)
+    translated_folder = os.path.join(OUTPUT_FOLDER, 'translated')
 
+    # Clean folders first
+    for folder in [extract_folder, translated_folder]:
+        if os.path.exists(folder):
+            for f in os.listdir(folder):
+                os.remove(os.path.join(folder, f))
+        else:
+            os.makedirs(folder)
+
+    # Unzip
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_folder)
-
-    translated_folder = os.path.join(OUTPUT_FOLDER, 'translated')
-    os.makedirs(translated_folder, exist_ok=True)
 
     for filename in os.listdir(extract_folder):
         if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
             path = os.path.join(extract_folder, filename)
-            img = Image.open(path)
+            img = Image.open(path).convert("RGB")
             text = pytesseract.image_to_string(img, lang='eng+jpn')
+
+            if not text.strip():
+                continue  # Skip empty ones
 
             translated_text = GoogleTranslator(source='auto', target='en').translate(text)
 
             draw = ImageDraw.Draw(img)
-            draw.rectangle([0, 0, img.width, 100], fill="white")  # Clear top area
+            draw.rectangle([0, 0, img.width, 100], fill="white")  # Optional: clear space
             draw.text((10, 10), translated_text, fill="black")
 
             img.save(os.path.join(translated_folder, filename))
