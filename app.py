@@ -1,79 +1,61 @@
 import os
 import zipfile
-import shutil
-
-from flask import Flask, request, render_template, send_file
+from flask import Flask, request, send_file, jsonify
 from PIL import Image, ImageDraw, ImageFont
 import pytesseract
-import cv2
-import numpy as np
-from transformers import pipeline
+from deep_translator import GoogleTranslator
 
-app = Flask(__name__)
-
-# Use Hugging Face translation pipeline
-translator = pipeline("translation", model="Helsinki-NLP/opus-mt-ja-en")  # Japanese to English
-
-UPLOAD_FOLDER = "uploads"
-RESULT_FOLDER = "translated"
+app = Flask(name)
+UPLOAD_FOLDER = 'uploads'
+OUTPUT_FOLDER = 'output'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(RESULT_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-
-def translate_image_text(image_path):
-    img = cv2.imread(image_path)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    data = pytesseract.image_to_data(gray, lang='jpn', output_type=pytesseract.Output.DICT)
-
-    for i in range(len(data['text'])):
-        if int(data['conf'][i]) > 50 and data['text'][i].strip() != "":
-            x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
-            original_text = data['text'][i]
-            try:
-                translated = translator(original_text)[0]['translation_text']
-            except:
-                translated = "[error]"
-            
-            # White out the original text
-            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 255), -1)
-            # Write translated text
-            cv2.putText(img, translated, (x, y + h - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
-    output_path = os.path.join(RESULT_FOLDER, os.path.basename(image_path))
-    cv2.imwrite(output_path, img)
-    return output_path
-
-
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def index():
-    if request.method == 'POST':
-        if 'zipfile' not in request.files:
-            return "No file uploaded"
+    return '''
+        <h1>Manga Translator (Termux)</h1>
+        <form method="POST" action="/upload" enctype="multipart/form-data">
+            <input type="file" name="zip_file" accept=".zip" />
+            <input type="submit" value="Upload & Translate" />
+        </form>
+    '''
 
-        zip_file = request.files['zipfile']
-        upload_path = os.path.join(UPLOAD_FOLDER, "uploaded.zip")
-        zip_file.save(upload_path)
+@app.route('/upload', methods=['POST'])
+def upload_and_translate():
+    zip_file = request.files['zip_file']
+    zip_path = os.path.join(UPLOAD_FOLDER, zip_file.filename)
+    zip_file.save(zip_path)
 
-        extract_folder = os.path.join(UPLOAD_FOLDER, "extracted")
-        shutil.unpack_archive(upload_path, extract_folder)
+    extract_folder = os.path.join(UPLOAD_FOLDER, 'extracted')
+    os.makedirs(extract_folder, exist_ok=True)
 
-        output_images = []
-        for filename in os.listdir(extract_folder):
-            if filename.lower().endswith((".png", ".jpg", ".jpeg")):
-                img_path = os.path.join(extract_folder, filename)
-                out_path = translate_image_text(img_path)
-                output_images.append(out_path)
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(extract_folder)
 
-        # Zip result
-        result_zip = os.path.join(RESULT_FOLDER, "translated.zip")
-        with zipfile.ZipFile(result_zip, 'w') as zipf:
-            for img_path in output_images:
-                zipf.write(img_path, os.path.basename(img_path))
+    translated_folder = os.path.join(OUTPUT_FOLDER, 'translated')
+    os.makedirs(translated_folder, exist_ok=True)
 
-        return send_file(result_zip, as_attachment=True)
+    for filename in os.listdir(extract_folder):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            path = os.path.join(extract_folder, filename)
+            img = Image.open(path)
+            text = pytesseract.image_to_string(img, lang='eng+jpn')
 
-    return render_template("index.html")
+            translated_text = GoogleTranslator(source='auto', target='en').translate(text)
 
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([0, 0, img.width, 100], fill="white")  # Clear top area
+            draw.text((10, 10), translated_text, fill="black")
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+            img.save(os.path.join(translated_folder, filename))
+
+    output_zip = os.path.join(OUTPUT_FOLDER, 'translated.zip')
+    with zipfile.ZipFile(output_zip, 'w') as zipf:
+        for filename in os.listdir(translated_folder):
+            zipf.write(os.path.join(translated_folder, filename), filename)
+
+    return send_file(output_zip, as_attachment=True)
+
+if name == 'main':
+    app.run(debug=True, host='0.0.0.0', port=5000)
