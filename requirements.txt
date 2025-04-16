@@ -1,6 +1,4 @@
 flask
-transformers
-torch
-pillow
+Pillow
 pytesseract
-opencv-python
+deep_translator
